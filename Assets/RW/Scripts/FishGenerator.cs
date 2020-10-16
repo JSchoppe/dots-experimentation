@@ -1,15 +1,11 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-
+﻿using UnityEngine;
+using UnityEngine.Jobs;
 using Unity.Jobs;
 using Unity.Collections;
 using Unity.Burst;
-using UnityEngine.Jobs;
+using Random = Unity.Mathematics.Random;
 
-using math = Unity.Mathematics.math;
-using random = Unity.Mathematics.Random;
-
+// Creates and manages the fish in the scene.
 public class FishGenerator : MonoBehaviour
 {
     private PositionUpdateJob positionUpdateJob;
@@ -38,7 +34,7 @@ public class FishGenerator : MonoBehaviour
             Vector3 currentVelocity = objectVelocities[i];
 
             // 2            
-            random randomGen = new random((uint)(i * time + 1 + seed));
+            Random randomGen = new Random((uint)(i * time + 1 + seed));
 
             // 3
             transform.position +=
@@ -126,10 +122,10 @@ public class FishGenerator : MonoBehaviour
         {
 
             float distanceX =
-            Random.Range(-spawnBounds.x / 2, spawnBounds.x / 2);
+            UnityEngine.Random.Range(-spawnBounds.x / 2, spawnBounds.x / 2);
 
             float distanceZ =
-            Random.Range(-spawnBounds.z / 2, spawnBounds.z / 2);
+            UnityEngine.Random.Range(-spawnBounds.z / 2, spawnBounds.z / 2);
 
             // 3
             Vector3 spawnPoint =

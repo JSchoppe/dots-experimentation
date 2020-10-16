@@ -1,90 +1,88 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
-
+﻿using UnityEngine;
 using UnityEngine.Jobs;
 using Unity.Collections;
 using Unity.Burst;
 using Unity.Jobs;
 using Unity.Mathematics;
 
+// Creates and manages the waves in the scene.
 public class WaveGenerator : MonoBehaviour
 {
-    JobHandle meshModificationJobHandle; // 1
-    UpdateMeshJob meshModificationJob; // 2
+    // The instance of the job that stores job variables.
+    UpdateMeshJob meshModificationJob;
+    // Provides info about the state of the job.
+    JobHandle meshModificationJobHandle;
 
-    [BurstCompile]
+    [BurstCompile] // Compiles this job with platform specific technology.
     private struct UpdateMeshJob : IJobParallelFor
     {
-        // 1
+        // Fast unmanaged memory for a series of Vector3 structs.
         public NativeArray<Vector3> vertices;
-
-        // 2
-        [ReadOnly]
+        [ReadOnly] // Performance boost from promising we will not modify this data.
         public NativeArray<Vector3> normals;
-
-        // 3
+        // These act as the "parameters" of the job.
         public float offsetSpeed;
         public float scale;
         public float height;
-
-        // 4
         public float time;
-
+        // This is the implementation of the job.
+        // It is called for each vertex on the mesh.
         public void Execute(int i)
         {
-            // 1
+            // Make sure this vertex is on the top surface.
+            // TODO seems like something that could be precalculated in this scenario.
             if (normals[i].z > 0f)
             {
-                // 2
-                var vertex = vertices[i];
+                // You must pull the value out, modify it,
+                // and then put it back in.
+                Vector3 vertex = vertices[i];
 
-                // 3
+                // Uses perlin noise to generate an elevation.
+                // TODO seems like this could be dryer (pass in offsetSpeed * time)
                 float noiseValue =
-                Noise(vertex.x * scale + offsetSpeed * time, vertex.y * scale +
+                    Noise(vertex.x * scale + offsetSpeed * time, vertex.y * scale +
                 offsetSpeed * time);
 
-                // 4
                 vertices[i] =
-                new Vector3(vertex.x, vertex.y, noiseValue * height + 0.3f);
+                    new Vector3(vertex.x, vertex.y, noiseValue * height + 0.3f);
             }
         }
-
         private float Noise(float x, float y)
         {
             float2 pos = math.float2(x, y);
+            // The low level code is c++ like (elitist) in its naming.
             return noise.snoise(pos);
         }
     }
 
+    // Inspector references for controlling the behavior.
     [Header("Wave Parameters")]
     public float waveScale;
     public float waveOffsetSpeed;
     public float waveHeight;
-
     [Header("References and Prefabs")]
     public MeshFilter waterMeshFilter;
     private Mesh waterMesh;
 
-    NativeArray<Vector3> waterVertices;
-    NativeArray<Vector3> waterNormals;
+    // Persistent fast-access storage for each of our vertices.
+    private NativeArray<Vector3> waterVertices;
+    private NativeArray<Vector3> waterNormals;
 
     private void Start()
     {
         waterMesh = waterMeshFilter.mesh;
-
-        waterMesh.MarkDynamic(); // 1
-
+        // Tells Unity we will update this mesh very often.
+        waterMesh.MarkDynamic();
+        // Initialize our fast memory to match the inital mesh state.
         waterVertices =
-        new NativeArray<Vector3>(waterMesh.vertices, Allocator.Persistent); // 2
-
+            new NativeArray<Vector3>(waterMesh.vertices, Allocator.Persistent);
         waterNormals =
-        new NativeArray<Vector3>(waterMesh.normals, Allocator.Persistent);
+            new NativeArray<Vector3>(waterMesh.normals, Allocator.Persistent);
     }
 
     private void Update()
     {
-        // 1
+        // Pass the arguments into the job struct.
         meshModificationJob = new UpdateMeshJob()
         {
             vertices = waterVertices,
@@ -94,26 +92,26 @@ public class WaveGenerator : MonoBehaviour
             scale = waveScale,
             height = waveHeight
         };
-
-        // 2
+        // Tell the jobs manager to distribute this task among 64 batches.
+        // This job will be executed on each vertex in the mesh.
         meshModificationJobHandle =
-        meshModificationJob.Schedule(waterVertices.Length, 64);
+            meshModificationJob.Schedule(waterVertices.Length, 64);
     }
 
     private void LateUpdate()
     {
-        // 1
+        // Wait to ensure all threads have finished their tasks.
         meshModificationJobHandle.Complete();
-
-        // 2
+        // Apply the results returned by the job.
         waterMesh.SetVertices(meshModificationJob.vertices);
-
-        // 3
+        // Update mesh lighting.
         waterMesh.RecalculateNormals();
     }
 
     private void OnDestroy()
     {
+        // ALL native types must be disposed at the end of
+        // the objects lifestyle! Otherwise there will be leaks!
         waterVertices.Dispose();
         waterNormals.Dispose();
     }
